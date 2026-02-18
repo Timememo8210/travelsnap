@@ -397,6 +397,7 @@ function toggleLang() {
   lang = lang === 'zh' ? 'en' : 'zh';
   localStorage.setItem('travelsnap_lang', lang);
   applyLang();
+  setMapTiles();
   render();
 }
 
@@ -428,10 +429,28 @@ let geoJsonData = null;
 const map = L.map('map', { center: [30, 110], zoom: 3, zoomControl: false });
 L.control.zoom({ position: 'bottomright' }).addTo(map);
 
-// Light tile
-L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-  attribution: '© OpenStreetMap © CARTO', maxZoom: 19
-}).addTo(map);
+// Tile layers (CN vs EN)
+let currentTileLayer = null;
+const TILE_ZH = 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png'; // default (English labels)
+// Chinese label tiles via CartoDB + language param
+const TILE_EN = 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
+// Use OSM-based Chinese tile for zh
+const TILE_ZH_URL = 'https://tile.openstreetmap.bzh/br/{z}/{x}/{y}.png';
+
+function setMapTiles() {
+  if (currentTileLayer) map.removeLayer(currentTileLayer);
+  if (lang === 'zh') {
+    // Chinese labels via Stamen/Stadia with OSM Chinese data
+    currentTileLayer = L.tileLayer('https://wprd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&style=7&x={x}&y={y}&z={z}', {
+      attribution: '© 高德地图', maxZoom: 18, subdomains: '1234'
+    }).addTo(map);
+  } else {
+    currentTileLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+      attribution: '© OpenStreetMap © CARTO', maxZoom: 19, subdomains: 'abcd'
+    }).addTo(map);
+  }
+}
+setMapTiles();
 
 map.on('contextmenu', function(e) {
   document.getElementById('inp-lat').value = e.latlng.lat.toFixed(6);
