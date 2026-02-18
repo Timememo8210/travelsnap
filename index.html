@@ -706,32 +706,100 @@ async function exportImage() {
   document.getElementById('export-overlay').classList.add('active');
   document.getElementById('export-preview').innerHTML = `<p style="color:var(--text-dim)">🎨 ${t('exportGen')}</p>`;
 
-  const div = document.createElement('div');
-  div.style.cssText = 'width:1080px;padding:50px;background:linear-gradient(135deg,#f0f9ff,#e0f2fe);position:fixed;left:-9999px;top:0;';
   const countries = [...new Set(trips.map(t => t.country))];
   const cities = [...new Set(trips.filter(t => t.city).map(t => t.city))];
-  const places = trips.map(t => `${t.emoji||'📍'} ${t.place}`);
 
-  div.innerHTML = `
-    <div style="text-align:center;margin-bottom:30px">
-      <div style="font-size:42px;font-weight:800;color:#1e293b;font-family:-apple-system,sans-serif">${t('exportMyTrips')}</div>
-      <div style="font-size:16px;color:#64748b;margin-top:8px">${countries.length} ${t('countries')} · ${cities.length} ${t('cities')} · ${trips.length} ${t('trips')}</div>
+  // Create offscreen export map
+  const wrapper = document.createElement('div');
+  wrapper.style.cssText = 'position:fixed;left:-9999px;top:0;width:1080px;height:1440px;';
+  wrapper.innerHTML = `
+    <div id="export-root" style="width:1080px;height:1440px;background:#f0f9ff;font-family:-apple-system,PingFang SC,sans-serif;overflow:hidden;">
+      <div style="text-align:center;padding:30px 40px 16px;">
+        <div style="font-size:36px;font-weight:800;color:#1e293b;">${t('exportMyTrips')}</div>
+        <div style="font-size:15px;color:#64748b;margin-top:6px;">${countries.length} ${t('countries')} · ${cities.length} ${t('cities')} · ${trips.length} ${t('trips')}</div>
+      </div>
+      <div id="export-map-container" style="width:1000px;height:900px;margin:0 auto;border-radius:16px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.1);"></div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center;padding:20px 40px 0;">
+        ${countries.map(c => `<div style="background:${getCountryColor(c)}22;color:${getCountryColor(c)};padding:6px 14px;border-radius:16px;font-size:13px;border:1px solid ${getCountryColor(c)}44;">${getEmoji(c)} ${c}</div>`).join('')}
+      </div>
+      <div style="text-align:center;color:#94a3b8;font-size:12px;padding:16px;">TravelSnap · ${new Date().getFullYear()}</div>
     </div>
-    <div style="display:flex;flex-wrap:wrap;gap:12px;justify-content:center;margin:30px 0">
-      ${places.map(p => `<div style="background:rgba(37,99,235,0.1);color:#2563eb;padding:10px 20px;border-radius:24px;font-size:15px;font-family:-apple-system,sans-serif">${p}</div>`).join('')}
-    </div>
-    <div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin:20px 0">
-      ${countries.map(c => `<div style="background:${getCountryColor(c)}22;color:${getCountryColor(c)};padding:6px 14px;border-radius:16px;font-size:13px;font-family:-apple-system,sans-serif;border:1px solid ${getCountryColor(c)}44">🌐 ${c}</div>`).join('')}
-    </div>
-    <div style="text-align:center;color:#94a3b8;font-size:13px;margin-top:30px;font-family:-apple-system,sans-serif">TravelSnap · ${new Date().getFullYear()}</div>
   `;
-  document.body.appendChild(div);
+  document.body.appendChild(wrapper);
+
+  // Create export map
+  const exportMap = L.map('export-map-container', { zoomControl: false, attributionControl: false });
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', { maxZoom: 19 }).addTo(exportMap);
+
+  // Fit bounds to all trips
+  const bounds = L.latLngBounds(trips.map(t => [t.lat, t.lng]));
+  exportMap.fitBounds(bounds.pad(0.3));
+
+  // Add country highlights
+  if (geoJsonData) {
+    const nameMap = {
+      '中国':'China','美国':'United States of America','日本':'Japan','韩国':'South Korea',
+      '法国':'France','德国':'Germany','英国':'United Kingdom','意大利':'Italy','西班牙':'Spain',
+      '澳大利亚':'Australia','加拿大':'Canada','新加坡':'Singapore','泰国':'Thailand',
+      '越南':'Vietnam','印度':'India','巴西':'Brazil','墨西哥':'Mexico','埃及':'Egypt',
+      '土耳其':'Turkey','希腊':'Greece','瑞士':'Switzerland','荷兰':'Netherlands',
+      '葡萄牙':'Portugal','俄罗斯':'Russia','马来西亚':'Malaysia','印尼':'Indonesia',
+      '新西兰':'New Zealand','奥地利':'Austria','瑞典':'Sweden','挪威':'Norway',
+      '丹麦':'Denmark','芬兰':'Finland','冰岛':'Iceland','捷克':'Czech Republic',
+      '波兰':'Poland','匈牙利':'Hungary','柬埔寨':'Cambodia','缅甸':'Myanmar',
+      '菲律宾':'Philippines','南非':'South Africa','阿联酋':'United Arab Emirates',
+      '以色列':'Israel','台湾':'Taiwan','爱尔兰':'Ireland',
+    };
+    const visitedCountries = [...new Set(trips.map(t => t.country))];
+    visitedCountries.forEach(vc => {
+      const enName = nameMap[vc] || vc;
+      const color = getCountryColor(vc);
+      geoJsonData.features.filter(f => {
+        const name = f.properties.ADMIN || f.properties.name || '';
+        return name.toLowerCase() === enName.toLowerCase() || name.includes(enName) || enName.includes(name);
+      }).forEach(feat => {
+        L.geoJSON(feat, { style: { fillColor: color, fillOpacity: 0.35, color: color, weight: 2, opacity: 0.7 } }).addTo(exportMap);
+      });
+    });
+  }
+
+  // Add markers with labels
+  trips.forEach(trip => {
+    const icon = L.divIcon({
+      className: '',
+      html: `<div style="background:white;border:3px solid ${getCountryColor(trip.country)};border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:14px;box-shadow:0 2px 6px rgba(0,0,0,0.3)">${trip.emoji||'📍'}</div>`,
+      iconSize: [28, 28], iconAnchor: [14, 14]
+    });
+    const marker = L.marker([trip.lat, trip.lng], { icon }).addTo(exportMap);
+    // City label
+    marker.bindTooltip(trip.place, {
+      permanent: true, direction: 'right', offset: [14, 0],
+      className: 'export-label'
+    });
+  });
+
+  // Inject label style
+  const style = document.createElement('style');
+  style.textContent = '.export-label { background:rgba(255,255,255,0.9);border:1px solid #cbd5e1;border-radius:6px;padding:2px 8px;font-size:12px;font-weight:600;color:#1e293b;box-shadow:0 1px 4px rgba(0,0,0,0.1); }';
+  document.head.appendChild(style);
+
+  // Wait for tiles to load then capture
+  await new Promise(resolve => setTimeout(resolve, 3000));
+
   try {
-    const canvas = await html2canvas(div, { backgroundColor: null, scale: 2 });
+    const canvas = await html2canvas(document.getElementById('export-root'), {
+      useCORS: true, allowTaint: true, scale: 2, backgroundColor: '#f0f9ff',
+      width: 1080, height: 1440
+    });
     exportDataUrl = canvas.toDataURL('image/png');
     document.getElementById('export-preview').innerHTML = `<img src="${exportDataUrl}" style="width:100%;border-radius:8px">`;
-  } catch(e) { document.getElementById('export-preview').innerHTML = `<p style="color:var(--danger)">Error: ${e.message}</p>`; }
-  document.body.removeChild(div);
+  } catch(e) {
+    document.getElementById('export-preview').innerHTML = `<p style="color:var(--danger)">Error: ${e.message}</p>`;
+  }
+
+  exportMap.remove();
+  document.body.removeChild(wrapper);
+  document.head.removeChild(style);
 }
 function downloadExport() {
   if (!exportDataUrl) return;
