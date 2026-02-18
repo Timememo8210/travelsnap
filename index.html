@@ -738,97 +738,134 @@ async function exportImage() {
   const countries = [...new Set(trips.map(t => t.country))];
   const cities = [...new Set(trips.filter(t => t.city).map(t => t.city))];
 
-  // Create offscreen export map
-  const wrapper = document.createElement('div');
-  wrapper.style.cssText = 'position:fixed;left:-9999px;top:0;width:1080px;height:1440px;';
-  wrapper.innerHTML = `
-    <div id="export-root" style="width:1080px;height:1440px;background:#f0f9ff;font-family:-apple-system,PingFang SC,sans-serif;overflow:hidden;">
-      <div style="text-align:center;padding:30px 40px 16px;">
-        <div style="font-size:36px;font-weight:800;color:#1e293b;">${t('exportMyTrips')}</div>
-        <div style="font-size:15px;color:#64748b;margin-top:6px;">${countries.length} ${t('countries')} · ${cities.length} ${t('cities')} · ${trips.length} ${t('trips')}</div>
-      </div>
-      <div id="export-map-container" style="width:1000px;height:900px;margin:0 auto;border-radius:16px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.1);"></div>
-      <div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center;padding:20px 40px 0;">
-        ${countries.map(c => `<div style="background:${getCountryColor(c)}22;color:${getCountryColor(c)};padding:6px 14px;border-radius:16px;font-size:13px;border:1px solid ${getCountryColor(c)}44;">${getEmoji(c)} ${c}</div>`).join('')}
-      </div>
-      <div style="text-align:center;color:#94a3b8;font-size:12px;padding:16px;">TravelSnap · ${new Date().getFullYear()}</div>
-    </div>
-  `;
-  document.body.appendChild(wrapper);
-
-  // Create export map
-  const exportMap = L.map('export-map-container', { zoomControl: false, attributionControl: false });
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', { maxZoom: 19 }).addTo(exportMap);
-
-  // Fit bounds to all trips
+  // Step 1: Fit map to show all trips
+  const origCenter = map.getCenter();
+  const origZoom = map.getZoom();
   const bounds = L.latLngBounds(trips.map(t => [t.lat, t.lng]));
-  exportMap.fitBounds(bounds.pad(0.3));
+  map.fitBounds(bounds.pad(0.2));
 
-  // Add country highlights
-  if (geoJsonData) {
-    const nameMap = {
-      '中国':'China','美国':'United States of America','日本':'Japan','韩国':'South Korea',
-      '法国':'France','德国':'Germany','英国':'United Kingdom','意大利':'Italy','西班牙':'Spain',
-      '澳大利亚':'Australia','加拿大':'Canada','新加坡':'Singapore','泰国':'Thailand',
-      '越南':'Vietnam','印度':'India','巴西':'Brazil','墨西哥':'Mexico','埃及':'Egypt',
-      '土耳其':'Turkey','希腊':'Greece','瑞士':'Switzerland','荷兰':'Netherlands',
-      '葡萄牙':'Portugal','俄罗斯':'Russia','马来西亚':'Malaysia','印尼':'Indonesia',
-      '新西兰':'New Zealand','奥地利':'Austria','瑞典':'Sweden','挪威':'Norway',
-      '丹麦':'Denmark','芬兰':'Finland','冰岛':'Iceland','捷克':'Czech Republic',
-      '波兰':'Poland','匈牙利':'Hungary','柬埔寨':'Cambodia','缅甸':'Myanmar',
-      '菲律宾':'Philippines','南非':'South Africa','阿联酋':'United Arab Emirates',
-      '以色列':'Israel','台湾':'Taiwan','爱尔兰':'Ireland',
-    };
-    const visitedCountries = [...new Set(trips.map(t => t.country))];
-    visitedCountries.forEach(vc => {
-      const enName = nameMap[vc] || vc;
-      const color = getCountryColor(vc);
-      geoJsonData.features.filter(f => {
-        const name = f.properties.ADMIN || f.properties.name || '';
-        return name.toLowerCase() === enName.toLowerCase() || name.includes(enName) || enName.includes(name);
-      }).forEach(feat => {
-        L.geoJSON(feat, { style: { fillColor: color, fillOpacity: 0.35, color: color, weight: 2, opacity: 0.7 } }).addTo(exportMap);
-      });
-    });
-  }
-
-  // Add markers with labels
-  trips.forEach(trip => {
-    const icon = L.divIcon({
-      className: '',
-      html: `<div style="background:white;border:3px solid ${getCountryColor(trip.country)};border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:14px;box-shadow:0 2px 6px rgba(0,0,0,0.3)">${trip.emoji||'📍'}</div>`,
-      iconSize: [28, 28], iconAnchor: [14, 14]
-    });
-    const marker = L.marker([trip.lat, trip.lng], { icon }).addTo(exportMap);
-    // City label
-    marker.bindTooltip(trip.place, {
-      permanent: true, direction: 'right', offset: [14, 0],
-      className: 'export-label'
-    });
+  // Step 2: Show permanent labels on markers for export
+  const exportTooltips = [];
+  markers.forEach((m, i) => {
+    const trip = trips.filter(t => t.lat && t.lng)[i];
+    if (trip) {
+      m.bindTooltip(trip.place, { permanent: true, direction: 'right', offset: [14, 0], className: 'export-tooltip' });
+      m.openTooltip();
+      exportTooltips.push(m);
+    }
   });
 
-  // Inject label style
+  // Add temp style
   const style = document.createElement('style');
-  style.textContent = '.export-label { background:rgba(255,255,255,0.9);border:1px solid #cbd5e1;border-radius:6px;padding:2px 8px;font-size:12px;font-weight:600;color:#1e293b;box-shadow:0 1px 4px rgba(0,0,0,0.1); }';
+  style.id = 'export-style';
+  style.textContent = `.export-tooltip { background:rgba(255,255,255,0.95);border:1px solid #cbd5e1;border-radius:6px;padding:3px 10px;font-size:13px;font-weight:600;color:#1e293b;box-shadow:0 2px 6px rgba(0,0,0,0.15); }
+  .export-tooltip::before { display:none; }`;
   document.head.appendChild(style);
 
-  // Wait for tiles to load then capture
-  await new Promise(resolve => setTimeout(resolve, 3000));
+  // Hide UI overlays during capture
+  const hideEls = ['filter-bar','country-legend','mobile-stats','mobile-nav'].map(id => document.getElementById(id)).filter(Boolean);
+  hideEls.forEach(el => el.style.display = 'none');
+  document.querySelector('.header').style.display = 'none';
+
+  // Wait for tiles
+  await new Promise(r => setTimeout(r, 1500));
 
   try {
-    const canvas = await html2canvas(document.getElementById('export-root'), {
-      useCORS: true, allowTaint: true, scale: 2, backgroundColor: '#f0f9ff',
-      width: 1080, height: 1440
+    // Capture the map
+    const mapCanvas = await html2canvas(document.getElementById('map'), {
+      useCORS: true, allowTaint: true, scale: 2
     });
-    exportDataUrl = canvas.toDataURL('image/png');
+
+    // Create final composite
+    const W = 1080, H = 1440;
+    const finalCanvas = document.createElement('canvas');
+    finalCanvas.width = W * 2; finalCanvas.height = H * 2;
+    const ctx = finalCanvas.getContext('2d');
+    ctx.scale(2, 2);
+
+    // Background
+    ctx.fillStyle = '#f0f9ff';
+    ctx.fillRect(0, 0, W, H);
+
+    // Title
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#1e293b';
+    ctx.font = 'bold 36px -apple-system, PingFang SC, sans-serif';
+    ctx.fillText(t('exportMyTrips'), W/2, 55);
+    ctx.fillStyle = '#64748b';
+    ctx.font = '15px -apple-system, PingFang SC, sans-serif';
+    ctx.fillText(`${countries.length} ${t('countries')} · ${cities.length} ${t('cities')} · ${trips.length} ${t('trips')}`, W/2, 82);
+
+    // Map image (with rounded corners via clip)
+    const mapX = 40, mapY = 100, mapW = W - 80, mapH = 1050;
+    ctx.save();
+    ctx.beginPath();
+    const r = 16;
+    ctx.moveTo(mapX + r, mapY);
+    ctx.arcTo(mapX + mapW, mapY, mapX + mapW, mapY + mapH, r);
+    ctx.arcTo(mapX + mapW, mapY + mapH, mapX, mapY + mapH, r);
+    ctx.arcTo(mapX, mapY + mapH, mapX, mapY, r);
+    ctx.arcTo(mapX, mapY, mapX + mapW, mapY, r);
+    ctx.closePath();
+    ctx.clip();
+    ctx.drawImage(mapCanvas, mapX, mapY, mapW, mapH);
+    ctx.restore();
+
+    // Subtle border around map
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(mapX + r, mapY);
+    ctx.arcTo(mapX + mapW, mapY, mapX + mapW, mapY + mapH, r);
+    ctx.arcTo(mapX + mapW, mapY + mapH, mapX, mapY + mapH, r);
+    ctx.arcTo(mapX, mapY + mapH, mapX, mapY, r);
+    ctx.arcTo(mapX, mapY, mapX + mapW, mapY, r);
+    ctx.closePath();
+    ctx.strokeStyle = 'rgba(0,0,0,0.08)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.restore();
+
+    // Country tags at bottom
+    let tagX = 40;
+    const tagY = 1180;
+    ctx.font = '13px -apple-system, PingFang SC, sans-serif';
+    countries.forEach(c => {
+      const color = getCountryColor(c);
+      const text = `${getEmoji(c)} ${c}`;
+      const tw = ctx.measureText(text).width + 24;
+      // Tag background
+      ctx.fillStyle = color + '22';
+      ctx.beginPath();
+      ctx.roundRect(tagX, tagY, tw, 30, 15);
+      ctx.fill();
+      ctx.strokeStyle = color + '44';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      // Tag text
+      ctx.fillStyle = color;
+      ctx.textAlign = 'left';
+      ctx.fillText(text, tagX + 12, tagY + 20);
+      tagX += tw + 10;
+    });
+
+    // Footer
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = '12px -apple-system, sans-serif';
+    ctx.fillText(`TravelSnap · ${new Date().getFullYear()}`, W/2, 1420);
+
+    exportDataUrl = finalCanvas.toDataURL('image/png');
     document.getElementById('export-preview').innerHTML = `<img src="${exportDataUrl}" style="width:100%;border-radius:8px">`;
   } catch(e) {
     document.getElementById('export-preview').innerHTML = `<p style="color:var(--danger)">Error: ${e.message}</p>`;
   }
 
-  exportMap.remove();
-  document.body.removeChild(wrapper);
-  document.head.removeChild(style);
+  // Restore UI
+  hideEls.forEach(el => el.style.display = '');
+  document.querySelector('.header').style.display = '';
+  exportTooltips.forEach(m => m.unbindTooltip());
+  document.getElementById('export-style')?.remove();
+  render();
 }
 function downloadExport() {
   if (!exportDataUrl) return;
