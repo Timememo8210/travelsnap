@@ -32,8 +32,8 @@ body { font-family: -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif;
 }
 .logo { font-size: 20px; font-weight: 700; }
 .logo span { color: var(--accent); }
-.header-stats { display: flex; gap: 20px; font-size: 13px; color: var(--text-dim); }
-.header-stats .num { color: var(--accent); font-weight: 700; font-size: 16px; }
+.header-stats { display: flex; gap: 24px; font-size: 12px; color: var(--text-dim); letter-spacing: 0.3px; }
+.header-stats .num { color: var(--accent); font-weight: 800; font-size: 22px; display: block; line-height: 1; }
 .header-actions { display: flex; gap: 6px; align-items: center; }
 
 .btn {
@@ -156,11 +156,43 @@ textarea.form-input { resize: vertical; min-height: 70px; }
 .lightbox.active { display: flex; }
 .lightbox img { max-width: 90%; max-height: 90%; border-radius: 8px; }
 
+/* Mobile bottom nav */
+.mobile-nav {
+  display: none; position: fixed; bottom: 0; left: 0; right: 0; z-index: 1000;
+  background: var(--card); border-top: 1px solid var(--border);
+  padding: 8px 12px calc(8px + env(safe-area-inset-bottom, 0px)) 12px;
+  box-shadow: 0 -2px 12px rgba(0,0,0,0.08);
+}
+.mobile-nav-inner { display: flex; gap: 8px; }
+.mobile-nav .btn { flex: 1; justify-content: center; min-height: 46px; font-size: 14px; border-radius: 12px; }
+.mobile-nav .btn-primary { font-size: 15px; }
+
+/* Stats card (mobile) */
+.mobile-stats {
+  display: none; position: absolute; top: 64px; right: 12px; z-index: 1000;
+  background: var(--card); border-radius: 14px; padding: 14px 18px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.1); gap: 16px;
+}
+.mobile-stats .stat-item { text-align: center; }
+.mobile-stats .stat-num { font-size: 26px; font-weight: 800; color: var(--accent); line-height: 1; }
+.mobile-stats .stat-label { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+
 @media (max-width: 768px) {
   .header-stats { display: none; }
-  .side-panel { width: 100%; right: -100%; }
-  .filter-bar { width: 92%; overflow-x: auto; }
-  .country-legend { display: none; }
+  .header-actions .btn { display: none; }
+  .header-actions .lang-toggle { display: inline-block; }
+  .mobile-nav { display: block; }
+  .mobile-stats { display: flex; }
+  .side-panel { width: 100%; right: -100%; padding: 20px; padding-bottom: calc(80px + env(safe-area-inset-bottom, 0px)); }
+  .filter-bar { width: 92%; overflow-x: auto; top: 62px; left: 4%; transform: none; }
+  .country-legend { bottom: 80px; max-width: 160px; padding: 10px 12px; font-size: 11px; }
+  #map { height: calc(100vh - 52px - 62px); }
+  .form-input { padding: 12px 14px; font-size: 15px; border-radius: 10px; }
+  textarea.form-input { min-height: 80px; }
+  .btn { min-height: 46px; border-radius: 10px; }
+  .photo-upload { padding: 24px; }
+  .list-item { padding: 14px; border-radius: 10px; }
+  .list-item-name { font-size: 15px; }
 }
 </style>
 </head>
@@ -186,6 +218,22 @@ textarea.form-input { resize: vertical; min-height: 70px; }
 </div>
 
 <div id="map"></div>
+
+<!-- Mobile stats overlay -->
+<div class="mobile-stats" id="mobile-stats">
+  <div class="stat-item"><div class="stat-num" id="m-stat-countries">0</div><div class="stat-label" data-i18n="countries">个国家</div></div>
+  <div class="stat-item"><div class="stat-num" id="m-stat-cities">0</div><div class="stat-label" data-i18n="cities">个城市</div></div>
+  <div class="stat-item"><div class="stat-num" id="m-stat-trips">0</div><div class="stat-label" data-i18n="trips">次旅行</div></div>
+</div>
+
+<!-- Mobile bottom nav -->
+<div class="mobile-nav">
+  <div class="mobile-nav-inner">
+    <button class="btn btn-outline" onclick="openList()" data-i18n="btnList">📋 列表</button>
+    <button class="btn btn-primary" onclick="openAddPanel()" data-i18n="btnAdd">＋ 添加足迹</button>
+    <button class="btn btn-outline" onclick="exportImage()" data-i18n="btnExport">📤 导出</button>
+  </div>
+</div>
 
 <!-- Legend -->
 <div class="country-legend" id="country-legend">
@@ -466,6 +514,9 @@ function render() {
   document.getElementById('stat-countries').textContent = countries.size;
   document.getElementById('stat-cities').textContent = cities.size;
   document.getElementById('stat-trips').textContent = filtered.length;
+  // Mobile stats
+  const mc = document.getElementById('m-stat-countries');
+  if (mc) { mc.textContent = countries.size; document.getElementById('m-stat-cities').textContent = cities.size; document.getElementById('m-stat-trips').textContent = filtered.length; }
 
   filtered.forEach(trip => {
     if (!trip.lat || !trip.lng) return;
