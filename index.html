@@ -1,0 +1,681 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>TravelSnap 🌍 旅行足迹</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+:root {
+  --primary: #0ea5e9;
+  --primary-dark: #0284c7;
+  --bg: #0f172a;
+  --card: #1e293b;
+  --card-hover: #334155;
+  --text: #f1f5f9;
+  --text-dim: #94a3b8;
+  --accent: #38bdf8;
+  --success: #22c55e;
+  --danger: #ef4444;
+  --border: #334155;
+}
+body { font-family: -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif; background: var(--bg); color: var(--text); overflow: hidden; height: 100vh; }
+
+/* Header */
+.header { 
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 20px; background: var(--card); border-bottom: 1px solid var(--border);
+  position: relative; z-index: 1000;
+}
+.logo { font-size: 20px; font-weight: 700; }
+.logo span { color: var(--accent); }
+.header-stats { display: flex; gap: 20px; font-size: 13px; color: var(--text-dim); }
+.header-stats .num { color: var(--accent); font-weight: 700; font-size: 16px; }
+.header-actions { display: flex; gap: 8px; }
+
+/* Buttons */
+.btn { 
+  padding: 8px 16px; border: none; border-radius: 8px; font-size: 13px; 
+  cursor: pointer; font-weight: 600; transition: all 0.2s; display: flex; align-items: center; gap: 6px;
+}
+.btn-primary { background: var(--primary); color: white; }
+.btn-primary:hover { background: var(--primary-dark); }
+.btn-outline { background: transparent; color: var(--text-dim); border: 1px solid var(--border); }
+.btn-outline:hover { background: var(--card-hover); color: var(--text); }
+.btn-danger { background: var(--danger); color: white; }
+.btn-sm { padding: 5px 10px; font-size: 12px; }
+
+/* Map */
+#map { height: calc(100vh - 56px); width: 100%; }
+.leaflet-container { background: #0f172a; }
+
+/* Custom markers */
+.custom-marker {
+  background: var(--primary); color: white; border-radius: 50%; width: 32px; height: 32px;
+  display: flex; align-items: center; justify-content: center; font-size: 16px;
+  border: 3px solid white; box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+  transition: transform 0.2s;
+}
+.custom-marker:hover { transform: scale(1.2); }
+
+/* Popup */
+.trip-popup { min-width: 240px; }
+.trip-popup h3 { font-size: 16px; margin-bottom: 6px; color: #1e293b; }
+.trip-popup .date { font-size: 12px; color: #64748b; margin-bottom: 8px; }
+.trip-popup .note { font-size: 13px; color: #475569; margin-bottom: 8px; line-height: 1.5; }
+.trip-popup .photos { display: flex; gap: 6px; margin-bottom: 8px; }
+.trip-popup .photos img { width: 100px; height: 70px; object-fit: cover; border-radius: 6px; cursor: pointer; }
+.trip-popup .actions { display: flex; gap: 6px; }
+.popup-btn { padding: 4px 10px; border: none; border-radius: 4px; font-size: 11px; cursor: pointer; }
+.popup-btn-edit { background: #e0f2fe; color: #0284c7; }
+.popup-btn-del { background: #fee2e2; color: #dc2626; }
+
+/* Side Panel */
+.panel-overlay {
+  position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.5); z-index: 2000; display: none;
+}
+.panel-overlay.active { display: block; }
+.side-panel {
+  position: fixed; top: 0; right: -420px; width: 400px; height: 100vh;
+  background: var(--card); z-index: 2001; transition: right 0.3s ease;
+  overflow-y: auto; padding: 24px;
+}
+.side-panel.active { right: 0; }
+.panel-title { font-size: 20px; font-weight: 700; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; }
+.panel-close { background: none; border: none; color: var(--text-dim); font-size: 24px; cursor: pointer; }
+
+/* Form */
+.form-group { margin-bottom: 16px; }
+.form-label { display: block; font-size: 13px; color: var(--text-dim); margin-bottom: 6px; font-weight: 500; }
+.form-input {
+  width: 100%; padding: 10px 14px; background: var(--bg); border: 1px solid var(--border);
+  border-radius: 8px; color: var(--text); font-size: 14px; outline: none; transition: border 0.2s;
+}
+.form-input:focus { border-color: var(--accent); }
+textarea.form-input { resize: vertical; min-height: 80px; }
+.form-row { display: flex; gap: 12px; }
+.form-row .form-group { flex: 1; }
+
+/* Photo upload */
+.photo-upload {
+  border: 2px dashed var(--border); border-radius: 8px; padding: 20px;
+  text-align: center; cursor: pointer; transition: border-color 0.2s;
+}
+.photo-upload:hover { border-color: var(--accent); }
+.photo-upload-icon { font-size: 32px; margin-bottom: 8px; }
+.photo-upload-text { font-size: 13px; color: var(--text-dim); }
+.photo-preview { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+.photo-preview-item { position: relative; }
+.photo-preview-item img { width: 80px; height: 60px; object-fit: cover; border-radius: 6px; }
+.photo-preview-item .remove { 
+  position: absolute; top: -6px; right: -6px; width: 20px; height: 20px;
+  background: var(--danger); color: white; border: none; border-radius: 50%;
+  font-size: 12px; cursor: pointer; display: flex; align-items: center; justify-content: center;
+}
+
+/* Filter bar */
+.filter-bar {
+  position: absolute; top: 68px; left: 50%; transform: translateX(-50%);
+  z-index: 1000; display: flex; gap: 8px; background: var(--card);
+  padding: 8px 16px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+}
+.filter-chip {
+  padding: 6px 14px; border-radius: 20px; font-size: 12px; border: 1px solid var(--border);
+  background: transparent; color: var(--text-dim); cursor: pointer; transition: all 0.2s;
+}
+.filter-chip.active { background: var(--primary); color: white; border-color: var(--primary); }
+.filter-chip:hover { border-color: var(--accent); }
+
+/* Export overlay */
+.export-overlay {
+  position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.8); z-index: 3000; display: none;
+  align-items: center; justify-content: center;
+}
+.export-overlay.active { display: flex; }
+.export-card {
+  background: var(--card); border-radius: 16px; padding: 24px; max-width: 500px; width: 90%;
+  text-align: center;
+}
+.export-card h3 { margin-bottom: 16px; }
+.export-preview { margin: 16px 0; border-radius: 8px; overflow: hidden; }
+.export-preview img { width: 100%; }
+.export-actions { display: flex; gap: 10px; justify-content: center; }
+
+/* List panel */
+.list-item {
+  display: flex; align-items: center; gap: 12px; padding: 12px;
+  background: var(--bg); border-radius: 8px; margin-bottom: 8px; cursor: pointer;
+  transition: background 0.2s;
+}
+.list-item:hover { background: var(--card-hover); }
+.list-item-icon { font-size: 24px; }
+.list-item-info { flex: 1; }
+.list-item-name { font-size: 14px; font-weight: 600; }
+.list-item-date { font-size: 12px; color: var(--text-dim); }
+
+/* Responsive */
+@media (max-width: 768px) {
+  .header-stats { display: none; }
+  .side-panel { width: 100%; right: -100%; }
+  .filter-bar { width: 90%; overflow-x: auto; }
+}
+
+/* Lightbox */
+.lightbox {
+  position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.9); z-index: 4000; display: none;
+  align-items: center; justify-content: center; cursor: pointer;
+}
+.lightbox.active { display: flex; }
+.lightbox img { max-width: 90%; max-height: 90%; border-radius: 8px; }
+
+/* Export canvas (hidden) */
+#export-canvas {
+  position: fixed; left: -9999px; top: 0; width: 1080px;
+  background: linear-gradient(135deg, #0f172a, #1e293b); padding: 40px;
+}
+#export-canvas .export-title { font-size: 36px; font-weight: 800; color: white; text-align: center; margin-bottom: 8px; }
+#export-canvas .export-subtitle { font-size: 16px; color: #94a3b8; text-align: center; margin-bottom: 30px; }
+#export-canvas .export-map { width: 100%; height: 500px; border-radius: 12px; overflow: hidden; }
+#export-canvas .export-places { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 24px; justify-content: center; }
+#export-canvas .export-place-tag { background: rgba(14,165,233,0.2); color: #38bdf8; padding: 8px 16px; border-radius: 20px; font-size: 14px; }
+#export-canvas .export-footer { text-align: center; color: #475569; font-size: 13px; margin-top: 30px; }
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="header">
+  <div class="logo">🌍 Travel<span>Snap</span></div>
+  <div class="header-stats">
+    <div><span class="num" id="stat-countries">0</span> 个国家</div>
+    <div><span class="num" id="stat-cities">0</span> 个城市</div>
+    <div><span class="num" id="stat-trips">0</span> 次旅行</div>
+  </div>
+  <div class="header-actions">
+    <button class="btn btn-outline" onclick="openList()">📋 足迹列表</button>
+    <button class="btn btn-outline" onclick="exportImage()">📤 导出分享</button>
+    <button class="btn btn-primary" onclick="openAddPanel()">＋ 添加足迹</button>
+  </div>
+</div>
+
+<!-- Filter Bar -->
+<div class="filter-bar" id="filter-bar">
+  <button class="filter-chip active" data-filter="all" onclick="setFilter('all', this)">全部</button>
+</div>
+
+<!-- Map -->
+<div id="map"></div>
+
+<!-- Add/Edit Panel -->
+<div class="panel-overlay" id="panel-overlay" onclick="closePanel()"></div>
+<div class="side-panel" id="side-panel">
+  <div class="panel-title">
+    <span id="panel-title-text">✈️ 添加新足迹</span>
+    <button class="panel-close" onclick="closePanel()">✕</button>
+  </div>
+  <form id="trip-form" onsubmit="saveTrip(event)">
+    <input type="hidden" id="edit-id" value="">
+    <div class="form-group">
+      <label class="form-label">📍 地点名称 *</label>
+      <input type="text" class="form-input" id="inp-place" placeholder="如：巴黎、东京塔、波特兰" required>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">🌐 国家 *</label>
+        <input type="text" class="form-input" id="inp-country" placeholder="如：法国" required>
+      </div>
+      <div class="form-group">
+        <label class="form-label">🏙️ 城市</label>
+        <input type="text" class="form-input" id="inp-city" placeholder="如：巴黎">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">📅 开始日期 *</label>
+        <input type="date" class="form-input" id="inp-date-start" required>
+      </div>
+      <div class="form-group">
+        <label class="form-label">📅 结束日期</label>
+        <input type="date" class="form-input" id="inp-date-end">
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">📝 旅行笔记</label>
+      <textarea class="form-input" id="inp-note" placeholder="记录你的旅行感受..."></textarea>
+    </div>
+    <div class="form-group">
+      <label class="form-label">📸 照片（最多2张）</label>
+      <div class="photo-upload" onclick="document.getElementById('photo-input').click()">
+        <div class="photo-upload-icon">📷</div>
+        <div class="photo-upload-text">点击上传照片</div>
+      </div>
+      <input type="file" id="photo-input" accept="image/*" multiple style="display:none" onchange="handlePhotos(this)">
+      <div class="photo-preview" id="photo-preview"></div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">📌 地图坐标（可选，留空自动搜索）</label>
+      <div class="form-row">
+        <input type="number" step="any" class="form-input" id="inp-lat" placeholder="纬度">
+        <input type="number" step="any" class="form-input" id="inp-lng" placeholder="经度">
+      </div>
+      <div style="font-size:11px;color:var(--text-dim);margin-top:4px">💡 也可以直接在地图上右键点击来获取坐标</div>
+    </div>
+    <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;padding:12px;">
+      💾 保存足迹
+    </button>
+  </form>
+</div>
+
+<!-- List Panel -->
+<div class="panel-overlay" id="list-overlay" onclick="closeList()"></div>
+<div class="side-panel" id="list-panel">
+  <div class="panel-title">
+    <span>📋 我的足迹</span>
+    <button class="panel-close" onclick="closeList()">✕</button>
+  </div>
+  <div id="trip-list"></div>
+</div>
+
+<!-- Lightbox -->
+<div class="lightbox" id="lightbox" onclick="closeLightbox()">
+  <img id="lightbox-img" src="">
+</div>
+
+<!-- Export overlay -->
+<div class="export-overlay" id="export-overlay">
+  <div class="export-card">
+    <h3>📤 导出分享图</h3>
+    <p style="color:var(--text-dim);font-size:13px;margin-bottom:16px">正在生成精美分享图...</p>
+    <div class="export-preview" id="export-preview"></div>
+    <div class="export-actions">
+      <button class="btn btn-outline" onclick="closeExport()">关闭</button>
+      <button class="btn btn-primary" onclick="downloadExport()">💾 下载图片</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ===== DATA =====
+let trips = JSON.parse(localStorage.getItem('travelsnap_trips') || '[]');
+let uploadedPhotos = [];
+let currentFilter = 'all';
+let markers = [];
+
+// ===== MAP INIT =====
+const map = L.map('map', {
+  center: [30, 110],
+  zoom: 3,
+  zoomControl: false
+});
+
+L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+  attribution: '© OpenStreetMap © CARTO',
+  maxZoom: 19
+}).addTo(map);
+
+// Right-click to add
+map.on('contextmenu', function(e) {
+  document.getElementById('inp-lat').value = e.latlng.lat.toFixed(6);
+  document.getElementById('inp-lng').value = e.latlng.lng.toFixed(6);
+  openAddPanel();
+});
+
+// ===== GEOCODING (Nominatim) =====
+async function geocode(query) {
+  try {
+    const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1`);
+    const data = await res.json();
+    if (data.length > 0) return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
+  } catch(e) { console.error('Geocode error:', e); }
+  return null;
+}
+
+// ===== RENDER =====
+function render() {
+  // Clear markers
+  markers.forEach(m => map.removeLayer(m));
+  markers = [];
+
+  const filtered = currentFilter === 'all' ? trips : trips.filter(t => t.dateStart && t.dateStart.startsWith(currentFilter));
+
+  // Stats
+  const countries = new Set(filtered.map(t => t.country));
+  const cities = new Set(filtered.filter(t => t.city).map(t => t.city));
+  document.getElementById('stat-countries').textContent = countries.size;
+  document.getElementById('stat-cities').textContent = cities.size;
+  document.getElementById('stat-trips').textContent = filtered.length;
+
+  // Markers
+  filtered.forEach(trip => {
+    if (!trip.lat || !trip.lng) return;
+    
+    const icon = L.divIcon({
+      className: '',
+      html: `<div class="custom-marker">${trip.emoji || '📍'}</div>`,
+      iconSize: [32, 32],
+      iconAnchor: [16, 16]
+    });
+
+    const photoHtml = (trip.photos || []).map(p => 
+      `<img src="${p}" onclick="event.stopPropagation();showLightbox('${p}')">`
+    ).join('');
+
+    const dateStr = trip.dateStart + (trip.dateEnd ? ` → ${trip.dateEnd}` : '');
+
+    const popup = L.popup({ maxWidth: 300 }).setContent(`
+      <div class="trip-popup">
+        <h3>${trip.place}</h3>
+        <div class="date">📅 ${dateStr} · ${trip.country}${trip.city ? ' · ' + trip.city : ''}</div>
+        ${trip.note ? `<div class="note">${trip.note}</div>` : ''}
+        ${photoHtml ? `<div class="photos">${photoHtml}</div>` : ''}
+        <div class="actions">
+          <button class="popup-btn popup-btn-edit" onclick="editTrip('${trip.id}')">✏️ 编辑</button>
+          <button class="popup-btn popup-btn-del" onclick="deleteTrip('${trip.id}')">🗑️ 删除</button>
+        </div>
+      </div>
+    `);
+
+    const marker = L.marker([trip.lat, trip.lng], { icon }).addTo(map).bindPopup(popup);
+    markers.push(marker);
+  });
+
+  // Update filters
+  updateFilters();
+  
+  // Save
+  localStorage.setItem('travelsnap_trips', JSON.stringify(trips));
+}
+
+function updateFilters() {
+  const years = [...new Set(trips.filter(t => t.dateStart).map(t => t.dateStart.substring(0, 4)))].sort().reverse();
+  const bar = document.getElementById('filter-bar');
+  bar.innerHTML = `<button class="filter-chip ${currentFilter === 'all' ? 'active' : ''}" onclick="setFilter('all', this)">全部</button>`;
+  years.forEach(y => {
+    bar.innerHTML += `<button class="filter-chip ${currentFilter === y ? 'active' : ''}" onclick="setFilter('${y}', this)">${y}年</button>`;
+  });
+}
+
+function setFilter(f, el) {
+  currentFilter = f;
+  render();
+}
+
+// ===== PANEL =====
+function openAddPanel() {
+  document.getElementById('panel-overlay').classList.add('active');
+  document.getElementById('side-panel').classList.add('active');
+  document.getElementById('panel-title-text').textContent = '✈️ 添加新足迹';
+  document.getElementById('edit-id').value = '';
+  uploadedPhotos = [];
+  document.getElementById('photo-preview').innerHTML = '';
+}
+
+function closePanel() {
+  document.getElementById('panel-overlay').classList.remove('active');
+  document.getElementById('side-panel').classList.remove('active');
+  document.getElementById('trip-form').reset();
+  uploadedPhotos = [];
+  document.getElementById('photo-preview').innerHTML = '';
+}
+
+// ===== SAVE =====
+async function saveTrip(e) {
+  e.preventDefault();
+  
+  const editId = document.getElementById('edit-id').value;
+  let lat = parseFloat(document.getElementById('inp-lat').value);
+  let lng = parseFloat(document.getElementById('inp-lng').value);
+  
+  const place = document.getElementById('inp-place').value;
+  const country = document.getElementById('inp-country').value;
+  const city = document.getElementById('inp-city').value;
+
+  // Geocode if no coordinates
+  if (isNaN(lat) || isNaN(lng)) {
+    const query = `${place}, ${city || ''} ${country}`.trim();
+    const coords = await geocode(query);
+    if (coords) {
+      lat = coords.lat;
+      lng = coords.lng;
+    } else {
+      alert('无法找到该地点的坐标，请手动输入或在地图上右键点击');
+      return;
+    }
+  }
+
+  const trip = {
+    id: editId || Date.now().toString(),
+    place,
+    country,
+    city,
+    dateStart: document.getElementById('inp-date-start').value,
+    dateEnd: document.getElementById('inp-date-end').value,
+    note: document.getElementById('inp-note').value,
+    photos: uploadedPhotos.slice(0, 2),
+    lat, lng,
+    emoji: getEmoji(country)
+  };
+
+  if (editId) {
+    const idx = trips.findIndex(t => t.id === editId);
+    if (idx >= 0) trips[idx] = trip;
+  } else {
+    trips.push(trip);
+  }
+
+  closePanel();
+  render();
+  
+  // Fly to new marker
+  map.flyTo([lat, lng], 6, { duration: 1.5 });
+}
+
+// ===== EDIT / DELETE =====
+function editTrip(id) {
+  const trip = trips.find(t => t.id === id);
+  if (!trip) return;
+  
+  map.closePopup();
+  openAddPanel();
+  document.getElementById('panel-title-text').textContent = '✏️ 编辑足迹';
+  document.getElementById('edit-id').value = id;
+  document.getElementById('inp-place').value = trip.place;
+  document.getElementById('inp-country').value = trip.country;
+  document.getElementById('inp-city').value = trip.city || '';
+  document.getElementById('inp-date-start').value = trip.dateStart;
+  document.getElementById('inp-date-end').value = trip.dateEnd || '';
+  document.getElementById('inp-note').value = trip.note || '';
+  document.getElementById('inp-lat').value = trip.lat;
+  document.getElementById('inp-lng').value = trip.lng;
+  
+  uploadedPhotos = trip.photos || [];
+  renderPhotoPreview();
+}
+
+function deleteTrip(id) {
+  if (!confirm('确定删除这个足迹吗？')) return;
+  trips = trips.filter(t => t.id !== id);
+  map.closePopup();
+  render();
+}
+
+// ===== PHOTOS =====
+function handlePhotos(input) {
+  const files = Array.from(input.files).slice(0, 2 - uploadedPhotos.length);
+  files.forEach(file => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      if (uploadedPhotos.length < 2) {
+        uploadedPhotos.push(e.target.result);
+        renderPhotoPreview();
+      }
+    };
+    reader.readAsDataURL(file);
+  });
+  input.value = '';
+}
+
+function renderPhotoPreview() {
+  const container = document.getElementById('photo-preview');
+  container.innerHTML = uploadedPhotos.map((p, i) => `
+    <div class="photo-preview-item">
+      <img src="${p}">
+      <button class="remove" onclick="removePhoto(${i})">✕</button>
+    </div>
+  `).join('');
+}
+
+function removePhoto(i) {
+  uploadedPhotos.splice(i, 1);
+  renderPhotoPreview();
+}
+
+// ===== LIST =====
+function openList() {
+  document.getElementById('list-overlay').classList.add('active');
+  document.getElementById('list-panel').classList.add('active');
+  
+  const sorted = [...trips].sort((a, b) => (b.dateStart || '').localeCompare(a.dateStart || ''));
+  const listEl = document.getElementById('trip-list');
+  
+  if (sorted.length === 0) {
+    listEl.innerHTML = '<div style="text-align:center;color:var(--text-dim);padding:40px">还没有足迹，点击右上角"添加足迹"开始记录吧！</div>';
+    return;
+  }
+
+  listEl.innerHTML = sorted.map(t => `
+    <div class="list-item" onclick="flyToTrip('${t.id}')">
+      <div class="list-item-icon">${t.emoji || '📍'}</div>
+      <div class="list-item-info">
+        <div class="list-item-name">${t.place}</div>
+        <div class="list-item-date">${t.dateStart || '未知日期'} · ${t.country}${t.city ? ' · ' + t.city : ''}</div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function closeList() {
+  document.getElementById('list-overlay').classList.remove('active');
+  document.getElementById('list-panel').classList.remove('active');
+}
+
+function flyToTrip(id) {
+  const trip = trips.find(t => t.id === id);
+  if (!trip) return;
+  closeList();
+  map.flyTo([trip.lat, trip.lng], 8, { duration: 1 });
+  // Open popup
+  setTimeout(() => {
+    const m = markers.find(mk => {
+      const ll = mk.getLatLng();
+      return Math.abs(ll.lat - trip.lat) < 0.001 && Math.abs(ll.lng - trip.lng) < 0.001;
+    });
+    if (m) m.openPopup();
+  }, 1200);
+}
+
+// ===== LIGHTBOX =====
+function showLightbox(src) {
+  document.getElementById('lightbox-img').src = src;
+  document.getElementById('lightbox').classList.add('active');
+}
+function closeLightbox() {
+  document.getElementById('lightbox').classList.remove('active');
+}
+
+// ===== EXPORT =====
+let exportDataUrl = null;
+async function exportImage() {
+  if (trips.length === 0) { alert('还没有足迹数据，先添加一些旅行记录吧！'); return; }
+  
+  document.getElementById('export-overlay').classList.add('active');
+  document.getElementById('export-preview').innerHTML = '<p style="color:var(--text-dim)">🎨 正在生成...</p>';
+
+  // Create export div
+  const div = document.createElement('div');
+  div.style.cssText = 'width:1080px;padding:50px;background:linear-gradient(135deg,#0f172a,#1e293b);position:fixed;left:-9999px;top:0;';
+  
+  const countries = [...new Set(trips.map(t => t.country))];
+  const cities = [...new Set(trips.filter(t => t.city).map(t => t.city))];
+  const places = trips.map(t => `${t.emoji || '📍'} ${t.place}`);
+
+  div.innerHTML = `
+    <div style="text-align:center;margin-bottom:30px">
+      <div style="font-size:42px;font-weight:800;color:white;font-family:-apple-system,sans-serif">🌍 我的旅行足迹</div>
+      <div style="font-size:16px;color:#94a3b8;margin-top:8px">${countries.length} 个国家 · ${cities.length} 个城市 · ${trips.length} 次旅行</div>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:12px;justify-content:center;margin:30px 0">
+      ${places.map(p => `<div style="background:rgba(14,165,233,0.2);color:#38bdf8;padding:10px 20px;border-radius:24px;font-size:15px;font-family:-apple-system,sans-serif">${p}</div>`).join('')}
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin:20px 0">
+      ${countries.map(c => `<div style="background:rgba(34,197,94,0.15);color:#4ade80;padding:6px 14px;border-radius:16px;font-size:13px;font-family:-apple-system,sans-serif">🌐 ${c}</div>`).join('')}
+    </div>
+    <div style="text-align:center;color:#475569;font-size:13px;margin-top:30px;font-family:-apple-system,sans-serif">TravelSnap · ${new Date().getFullYear()}</div>
+  `;
+
+  document.body.appendChild(div);
+
+  try {
+    const canvas = await html2canvas(div, { backgroundColor: null, scale: 2 });
+    exportDataUrl = canvas.toDataURL('image/png');
+    document.getElementById('export-preview').innerHTML = `<img src="${exportDataUrl}" style="width:100%;border-radius:8px">`;
+  } catch(e) {
+    document.getElementById('export-preview').innerHTML = `<p style="color:var(--danger)">导出失败: ${e.message}</p>`;
+  }
+  
+  document.body.removeChild(div);
+}
+
+function downloadExport() {
+  if (!exportDataUrl) return;
+  const a = document.createElement('a');
+  a.href = exportDataUrl;
+  a.download = `TravelSnap_${new Date().toISOString().slice(0,10)}.png`;
+  a.click();
+}
+
+function closeExport() {
+  document.getElementById('export-overlay').classList.remove('active');
+}
+
+// ===== EMOJI =====
+function getEmoji(country) {
+  const map = {
+    '中国':'🇨🇳','美国':'🇺🇸','日本':'🇯🇵','韩国':'🇰🇷','法国':'🇫🇷','德国':'🇩🇪',
+    '英国':'🇬🇧','意大利':'🇮🇹','西班牙':'🇪🇸','澳大利亚':'🇦🇺','加拿大':'🇨🇦',
+    '新加坡':'🇸🇬','泰国':'🇹🇭','越南':'🇻🇳','印度':'🇮🇳','巴西':'🇧🇷',
+    '墨西哥':'🇲🇽','埃及':'🇪🇬','土耳其':'🇹🇷','希腊':'🇬🇷','瑞士':'🇨🇭',
+    'China':'🇨🇳','USA':'🇺🇸','Japan':'🇯🇵','Korea':'🇰🇷','France':'🇫🇷',
+    'Germany':'🇩🇪','UK':'🇬🇧','Italy':'🇮🇹','Spain':'🇪🇸','Singapore':'🇸🇬',
+    'Thailand':'🇹🇭','India':'🇮🇳','Brazil':'🇧🇷','Canada':'🇨🇦','Australia':'🇦🇺',
+    'Mexico':'🇲🇽','Egypt':'🇪🇬','Turkey':'🇹🇷','Greece':'🇬🇷','Switzerland':'🇨🇭',
+    '荷兰':'🇳🇱','葡萄牙':'🇵🇹','俄罗斯':'🇷🇺','马来西亚':'🇲🇾','印尼':'🇮🇩',
+    '新西兰':'🇳🇿','奥地利':'🇦🇹','瑞典':'🇸🇪','挪威':'🇳🇴','丹麦':'🇩🇰',
+    '芬兰':'🇫🇮','冰岛':'🇮🇸','捷克':'🇨🇿','波兰':'🇵🇱','匈牙利':'🇭🇺',
+    '柬埔寨':'🇰🇭','缅甸':'🇲🇲','菲律宾':'🇵🇭','斯里兰卡':'🇱🇰','尼泊尔':'🇳🇵',
+    '摩洛哥':'🇲🇦','南非':'🇿🇦','阿联酋':'🇦🇪','以色列':'🇮🇱','约旦':'🇯🇴'
+  };
+  return map[country] || '📍';
+}
+
+// ===== DEMO DATA =====
+if (trips.length === 0) {
+  trips = [
+    { id: '1', place: '波特兰', country: '美国', city: 'Portland', dateStart: '2025-01-01', dateEnd: '', note: '家 🏠', photos: [], lat: 45.5155, lng: -122.6789, emoji: '🇺🇸' },
+    { id: '2', place: '南京', country: '中国', city: '南京', dateStart: '2025-06-15', dateEnd: '2025-06-30', note: '回老家探亲', photos: [], lat: 32.0603, lng: 118.7969, emoji: '🇨🇳' },
+  ];
+  render();
+} else {
+  render();
+}
+</script>
+</body>
+</html>
