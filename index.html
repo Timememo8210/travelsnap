@@ -59,12 +59,7 @@ body { font-family: -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif;
 .lang-toggle:hover { background: var(--card-hover); }
 
 #map { height: calc(100vh - 52px); width: 100%; }
-.leaflet-container { background: #e8f0fe; }
-.country-name-label span {
-  font-size: 11px; font-weight: 600; color: #475569;
-  white-space: nowrap; text-shadow: 1px 1px 2px white, -1px -1px 2px white, 1px -1px 2px white, -1px 1px 2px white;
-  pointer-events: none;
-}
+.leaflet-container { background: #e5e3df; }
 
 .custom-marker {
   background: white; color: var(--text); border-radius: 50%; width: 34px; height: 34px;
@@ -445,13 +440,14 @@ const TILE_ZH_URL = 'https://tile.openstreetmap.bzh/br/{z}/{x}/{y}.png';
 function setMapTiles() {
   if (currentTileLayer) map.removeLayer(currentTileLayer);
   if (lang === 'zh') {
-    // Use CARTO Voyager (light style) - no label layer, then overlay country names via GeoJSON tooltips
-    currentTileLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}{r}.png', {
-      attribution: '© OpenStreetMap © CARTO', maxZoom: 19, subdomains: 'abcd'
+    // Google Maps Chinese
+    currentTileLayer = L.tileLayer('https://mt{s}.google.com/vt/lyrs=m&hl=zh-CN&x={x}&y={y}&z={z}', {
+      attribution: '© Google Maps', maxZoom: 20, subdomains: '0123'
     }).addTo(map);
   } else {
-    currentTileLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-      attribution: '© OpenStreetMap © CARTO', maxZoom: 19, subdomains: 'abcd'
+    // Google Maps English
+    currentTileLayer = L.tileLayer('https://mt{s}.google.com/vt/lyrs=m&hl=en&x={x}&y={y}&z={z}', {
+      attribution: '© Google Maps', maxZoom: 20, subdomains: '0123'
     }).addTo(map);
   }
 }
@@ -523,26 +519,7 @@ function renderCountryHighlights() {
     });
   });
 
-  // In Chinese mode (no-labels base map), add country name labels for ALL visible countries
-  if (lang === 'zh' && geoJsonData) {
-    geoJsonData.features.forEach(feat => {
-      const enName = feat.properties.ADMIN || feat.properties.name || '';
-      const zhName = EN_TO_ZH[enName];
-      if (!zhName) return;
-      // Get centroid roughly
-      const bounds = L.geoJSON(feat).getBounds();
-      const center = bounds.getCenter();
-      const label = L.marker(center, {
-        icon: L.divIcon({
-          className: 'country-name-label',
-          html: `<span>${zhName}</span>`,
-          iconSize: [0, 0]
-        }),
-        interactive: false
-      }).addTo(map);
-      countryNameLabels.push(label);
-    });
-  }
+  // Google Maps handles Chinese/English labels natively via hl= parameter
 
   // Update legend
   const legendEl = document.getElementById('legend-items');
